@@ -1,0 +1,27 @@
+# Blueprint Render pour la fromagerie.
+# Les valeurs marquées `sync: false` sont demandées à la création du service.
+services:
+  - type: web
+    name: fromagerie-caprine
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /login
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 24.22.3
+      - key: APP_TIMEZONE
+        value: Europe/Paris
+      - key: DEMO_DATA
+        value: '0'
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
