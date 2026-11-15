@@ -13,7 +13,7 @@
     "lint": "next lint",
     "db:reset": "node scripts/reset-db.mjs"
   },
-  "dependencies": {"@tailwindcss/postcss": "latest",
+  "dependencies": {
     "@libsql/client": "0.18.0",
     "exceljs": "4.4.0",
     "next": "16.4.6",
