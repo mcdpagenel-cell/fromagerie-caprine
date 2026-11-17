@@ -169,6 +169,11 @@ export function fmtPercent(value: number | null | undefined, decimals = 1): stri
   return `${fmtNumber(value, decimals)} %`;
 }
 
+export function fmtEur(value: number | null | undefined, decimals = 2): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—';
+  return `${fmtNumber(value, decimals)} €`;
+}
+
 export function todayLabel(tz?: string): string {
   return formatDateLong(todayISO(tz));
 }

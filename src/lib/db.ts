@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { createClient, type Client, type InStatement } from '@libsql/client';
 
-import type { DayEntry, Settings, Stock } from './types';
+import type { DayEntry, PaymentMethod, SaleEntry, Settings, Stock } from './types';
 import { DEMO_OPENING_STOCK, demoStartISO, generateDemoDays } from './seed';
 import { todayISO } from './format';
 
@@ -89,7 +89,17 @@ const DDL: string[] = [
     cle    TEXT PRIMARY KEY,
     valeur TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS ventes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    date       TEXT NOT NULL,
+    montant    REAL NOT NULL DEFAULT 0,
+    moyen      TEXT NOT NULL DEFAULT 'especes',
+    note       TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_jours_date ON jours(date)`,
+  `CREATE INDEX IF NOT EXISTS idx_ventes_date ON ventes(date)`,
 ];
 
 /* ------------------------------------------------------------------ */
@@ -206,6 +216,46 @@ export function entryStatement(e: DayEntry, now = new Date().toISOString()): InS
 
 export async function insertEntry(client: Client, e: DayEntry): Promise<void> {
   await client.execute(entryStatement(e));
+}
+
+/* ------------------------------------------------------------------ */
+/*  Ventes (caisse)                                                    */
+/* ------------------------------------------------------------------ */
+
+export function rowToSale(row: Row): SaleEntry {
+  const moyen: PaymentMethod = row.moyen === 'carte' ? 'carte' : 'especes';
+  return {
+    id: num(row.id),
+    date: String(row.date),
+    montant: num(row.montant),
+    moyen,
+    note: typeof row.note === 'string' ? row.note : '',
+    updatedAt: typeof row.updated_at === 'string' ? row.updated_at : undefined,
+  };
+}
+
+export function saleInsertStatement(
+  s: { date: string; montant: number; moyen: PaymentMethod; note: string },
+  now = new Date().toISOString(),
+): InStatement {
+  return {
+    sql: `INSERT INTO ventes (date, montant, moyen, note, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)`,
+    args: [s.date, s.montant, s.moyen, s.note, now, now],
+  };
+}
+
+export function saleUpdateStatement(
+  id: number,
+  s: { date: string; montant: number; moyen: PaymentMethod; note: string },
+  now = new Date().toISOString(),
+): InStatement {
+  return {
+    sql: `UPDATE ventes
+          SET date = ?, montant = ?, moyen = ?, note = ?, updated_at = ?
+          WHERE id = ?`,
+    args: [s.date, s.montant, s.moyen, s.note, now, id],
+  };
 }
 
 /* ------------------------------------------------------------------ */

@@ -6,12 +6,13 @@ import { BarChart } from '@/components/charts';
 import { YearNav } from '@/components/period-nav';
 import { ExportLink, Kpi, PageHeader, RepartitionBar, SectionCard, StockPills } from '@/components/ui';
 import { IconAlert, IconSheet } from '@/components/icons';
-import { getYearData } from '@/lib/repo';
+import { aggregateSales, getSalesInRange, getYearData } from '@/lib/repo';
 import { PRODUCTS, PRODUCT_LABELS } from '@/lib/types';
 import { pct } from '@/lib/calc';
 import {
   MONTHS_SHORT,
   fmtNumber,
+  fmtEur,
   fmtPercent,
   todayISO,
 } from '@/lib/format';
@@ -38,7 +39,11 @@ export default async function AnneePage({ params }: { params: Promise<Params> })
   const year = resolveYear(annee);
   if (!year) notFound();
 
-  const data = await getYearData(year);
+  const [data, sales] = await Promise.all([
+    getYearData(year),
+    getSalesInRange(`${year}-01-01`, `${year}-12-31`),
+  ]);
+  const salesTotals = aggregateSales(sales);
   const t = data.totals;
   const anyNegative = data.months.some((m) => m.negativeDays.length > 0);
   const stockTotal = Object.values(data.stockFin).reduce((a, b) => a + b, 0);
@@ -158,6 +163,37 @@ export default async function AnneePage({ params }: { params: Promise<Params> })
           <RepartitionBar items={venteItems} />
         </SectionCard>
       </div>
+
+      <SectionCard
+        title="Recettes de l’année"
+        subtitle="Ventes encaissées (espèces & carte bancaire)"
+        actions={
+          <Link href={`/ventes/${year}`} className="text-[11.5px] font-semibold text-brand hover:underline">
+            Voir le détail des ventes →
+          </Link>
+        }
+      >
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <div className="rounded-xl bg-olive-soft/70 px-3 py-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+              Total Espèces
+            </div>
+            <div className="num text-lg font-bold text-olive">{fmtEur(salesTotals.especes)}</div>
+          </div>
+          <div className="rounded-xl bg-brand-soft px-3 py-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+              Total Carte
+            </div>
+            <div className="num text-lg font-bold text-brand-dark">{fmtEur(salesTotals.carte)}</div>
+          </div>
+          <div className="rounded-xl bg-cream/70 px-3 py-2.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+              Chiffre d’affaires
+            </div>
+            <div className="num text-lg font-bold text-ink">{fmtEur(salesTotals.total)}</div>
+          </div>
+        </div>
+      </SectionCard>
 
       <SectionCard
         title="Tableau récapitulatif mensuel"

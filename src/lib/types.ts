@@ -107,3 +107,31 @@ export type YearData = {
   stockDebut: Stock;
   stockFin: Stock;
 };
+
+/* ------------------------------------------------------------------ */
+/*  Ventes & recettes (caisse)                                         */
+/* ------------------------------------------------------------------ */
+
+export const PAYMENT_METHODS = ['especes', 'carte'] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export const PAYMENT_LABELS: Record<PaymentMethod, string> = {
+  especes: 'Espèces',
+  carte: 'Carte bancaire (TPE)',
+};
+
+export type SaleEntry = {
+  id: number; // 0 = vente pas encore enregistrée
+  date: string; // ISO — YYYY-MM-DD
+  montant: number; // euros
+  moyen: PaymentMethod;
+  note: string;
+  updatedAt?: string;
+};
+
+export type SalesTotals = {
+  especes: number;
+  carte: number;
+  total: number;
+  count: number;
+};

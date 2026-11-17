@@ -11,6 +11,9 @@ import {
   isRemoteDatabase,
   readSettings,
   rowToEntry,
+  rowToSale,
+  saleInsertStatement,
+  saleUpdateStatement,
 } from './db';
 import { DEMO_OPENING_STOCK, demoStartISO, generateDemoDays } from './seed';
 import {
@@ -25,6 +28,9 @@ import type {
   DayComputed,
   DayEntry,
   MonthData,
+  PaymentMethod,
+  SaleEntry,
+  SalesTotals,
   Settings,
   Stock,
   YearData,
@@ -226,6 +232,89 @@ export async function isSaved(date: string): Promise<boolean> {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Ventes & recettes                                                  */
+/* ------------------------------------------------------------------ */
+
+export async function getSalesInRange(from: string, to: string): Promise<SaleEntry[]> {
+  const db = await getDb();
+  const res = await db.execute({
+    sql: 'SELECT * FROM ventes WHERE date >= ? AND date <= ? ORDER BY date, id',
+    args: [from, to],
+  });
+  return (res.rows as Row[]).map(rowToSale);
+}
+
+export async function getSalesForDate(date: string): Promise<SaleEntry[]> {
+  return getSalesInRange(date, date);
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+export function sanitizeSale(input: {
+  date?: unknown;
+  montant?: unknown;
+  moyen?: unknown;
+  note?: unknown;
+}): { date: string; montant: number; moyen: PaymentMethod; note: string } | null {
+  const date = String(input.date ?? '');
+  if (!DATE_RE.test(date)) return null;
+  const raw = typeof input.montant === 'number' ? input.montant : Number(input.montant);
+  const montant = round2(Number.isFinite(raw) ? Math.min(Math.max(raw, 0), 100_000) : 0);
+  const moyen: PaymentMethod = input.moyen === 'carte' ? 'carte' : 'especes';
+  const note = typeof input.note === 'string' ? input.note.trim().slice(0, 300) : '';
+  return { date, montant, moyen, note };
+}
+
+export async function createSale(input: {
+  date?: unknown;
+  montant?: unknown;
+  moyen?: unknown;
+  note?: unknown;
+}): Promise<SaleEntry> {
+  const db = await getDb();
+  const clean = sanitizeSale(input);
+  if (!clean) throw new Error('Vente invalide : date ou montant incorrect.');
+  const now = new Date().toISOString();
+  const res = await db.execute(saleInsertStatement(clean, now));
+  return { id: Number(res.lastInsertRowid ?? 0), ...clean, updatedAt: now };
+}
+
+export async function updateSale(
+  id: number,
+  input: { date?: unknown; montant?: unknown; moyen?: unknown; note?: unknown },
+): Promise<SaleEntry | null> {
+  const db = await getDb();
+  const clean = sanitizeSale(input);
+  if (!clean || !Number.isInteger(id) || id <= 0) return null;
+  const now = new Date().toISOString();
+  const res = await db.execute(saleUpdateStatement(id, clean, now));
+  if (num(res.rowsAffected) === 0) return null;
+  return { id, ...clean, updatedAt: now };
+}
+
+export async function deleteSale(id: number): Promise<boolean> {
+  const db = await getDb();
+  const res = await db.execute({ sql: 'DELETE FROM ventes WHERE id = ?', args: [id] });
+  return num(res.rowsAffected) > 0;
+}
+
+/** Total Espèces / Carte / CA d'une liste de ventes. */
+export function aggregateSales(sales: SaleEntry[]): SalesTotals {
+  const t: SalesTotals = { especes: 0, carte: 0, total: 0, count: 0 };
+  for (const s of sales) {
+    t[s.moyen] += s.montant;
+    t.total += s.montant;
+    t.count += 1;
+  }
+  return {
+    especes: round2(t.especes),
+    carte: round2(t.carte),
+    total: round2(t.total),
+    count: t.count,
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /*  Agrégats mensuels / annuels                                        */
 /* ------------------------------------------------------------------ */
 
@@ -322,6 +411,7 @@ export type BackupPayload = {
   database: 'turso' | 'local';
   settings: Settings;
   days: DayEntry[];
+  sales: SaleEntry[];
 };
 
 export function backupFilename(): string {
@@ -330,17 +420,19 @@ export function backupFilename(): string {
 
 export async function backupPayload(): Promise<BackupPayload> {
   const db = await getDb();
-  const [settings, res] = await Promise.all([
+  const [settings, res, salesRes] = await Promise.all([
     readSettings(db),
     db.execute('SELECT * FROM jours ORDER BY date'),
+    db.execute('SELECT * FROM ventes ORDER BY date, id'),
   ]);
   return {
     application: 'fromagerie-caprine',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     database: isRemoteDatabase ? 'turso' : 'local',
     settings,
     days: (res.rows as Row[]).map(rowToEntry),
+    sales: (salesRes.rows as Row[]).map(rowToSale),
   };
 }
 
@@ -353,11 +445,13 @@ export async function exportJson(): Promise<string> {
   return backupJson();
 }
 
-export type RestoreResult = { days: number; settings: Settings };
+export type RestoreResult = { days: number; sales: number; settings: Settings };
 
 /**
  * Remplace l'intégralité des données par le contenu d'une sauvegarde JSON.
- * Accepte le format de sauvegarde de l'application (version 1 ou 2).
+ * Accepte les formats de sauvegarde version 1, 2 (sans ventes) et 3 (avec ventes).
+ * Les ventes ne sont remplacées que si la sauvegarde en contient : restaurer
+ * une ancienne sauvegarde (v1/v2) ne détruit donc pas la caisse actuelle.
  */
 export async function restorePayload(input: unknown): Promise<RestoreResult> {
   if (!input || typeof input !== 'object') {
@@ -366,6 +460,7 @@ export async function restorePayload(input: unknown): Promise<RestoreResult> {
   const data = input as {
     application?: string;
     days?: unknown;
+    sales?: unknown;
     settings?: Partial<Settings>;
   };
   if (data.application && data.application !== 'fromagerie-caprine') {
@@ -385,6 +480,18 @@ export async function restorePayload(input: unknown): Promise<RestoreResult> {
   }
   if (entries.size === 0) {
     throw new Error('Sauvegarde vide : aucune journée valide.');
+  }
+
+  const hasSales = Array.isArray(data.sales);
+  const sales: SaleEntry[] = [];
+  if (hasSales) {
+    for (const raw of data.sales as unknown[]) {
+      if (!raw || typeof raw !== 'object') continue;
+      const item = raw as Partial<SaleEntry>;
+      const clean = sanitizeSale(item);
+      if (!clean) continue;
+      sales.push({ id: 0, ...clean });
+    }
   }
 
   const db = await getDb();
@@ -415,7 +522,9 @@ export async function restorePayload(input: unknown): Promise<RestoreResult> {
     setting('tagline', tagline),
     ...openingStatements(openingDate, stock),
   ];
+  if (hasSales) statements.push({ sql: 'DELETE FROM ventes' });
   for (const entry of entries.values()) statements.push(entryStatement(entry));
+  for (const sale of sales) statements.push(saleInsertStatement(sale));
 
   // Transaction unique : soit tout est restauré, soit rien ne change.
   const tx = await db.transaction('write');
@@ -427,7 +536,7 @@ export async function restorePayload(input: unknown): Promise<RestoreResult> {
     throw err;
   }
 
-  return { days: entries.size, settings: { farmName, tagline, openingDate, openingStock: stock } };
+  return { days: entries.size, sales: sales.length, settings: { farmName, tagline, openingDate, openingStock: stock } };
 }
 
 export async function resetDemoData(): Promise<void> {
@@ -437,6 +546,7 @@ export async function resetDemoData(): Promise<void> {
   const statements: InStatement[] = [
     { sql: 'DELETE FROM jours' },
     { sql: 'DELETE FROM reglages' },
+    { sql: 'DELETE FROM ventes' },
     setting('farm_name', 'Fromagerie Caprine'),
     setting('tagline', 'Élevage & transformation fromagère'),
     ...openingStatements(openingDate, DEMO_OPENING_STOCK),
@@ -449,6 +559,7 @@ export async function clearAllData(): Promise<void> {
   const db = await getDb();
   const statements: InStatement[] = [
     { sql: 'DELETE FROM jours' },
+    { sql: 'DELETE FROM ventes' },
     ...openingStatements(todayISO(), emptyStock()),
   ];
   await db.batch(statements, 'write');

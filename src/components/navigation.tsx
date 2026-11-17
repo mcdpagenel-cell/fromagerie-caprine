@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ComponentType } from 'react';
 
-import { IconCalendar, IconChart, IconGrid, IconSettings } from './icons';
+import { IconBasket, IconCalendar, IconChart, IconGrid, IconSettings } from './icons';
 import { LogoutButton } from './settings/LogoutButton';
 
 type NavItem = { href: string; label: string; icon: ComponentType<{ className?: string }> };
@@ -13,6 +13,7 @@ const ITEMS: NavItem[] = [
   { href: '/jour', label: 'Jour', icon: IconCalendar },
   { href: '/mois', label: 'Mois', icon: IconGrid },
   { href: '/annee', label: 'Année', icon: IconChart },
+  { href: '/ventes', label: 'Ventes', icon: IconBasket },
   { href: '/parametres', label: 'Réglages', icon: IconSettings },
 ];
 

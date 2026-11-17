@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     }
 
     const result = await restorePayload(parsed);
-    return Response.json({ ok: true, days: result.days });
+    return Response.json({ ok: true, days: result.days, sales: result.sales });
   } catch (err) {
     console.error('Restauration', err);
     const message = err instanceof Error ? err.message : 'Restauration impossible.';

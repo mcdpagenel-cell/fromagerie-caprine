@@ -3,18 +3,22 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { BarChart } from '@/components/charts';
+import { HistoryList } from '@/components/day/HistoryList';
 import { MonthCalendar } from '@/components/month-calendar';
 import { MonthNav } from '@/components/period-nav';
 import { ExportLink, Kpi, PageHeader, RepartitionBar, SectionCard, StockPills } from '@/components/ui';
 import { IconAlert, IconSheet } from '@/components/icons';
-import { getMonthData, getSettings } from '@/lib/repo';
-import { PRODUCTS, PRODUCT_LABELS, type Product } from '@/lib/types';
-import { pct } from '@/lib/calc';
+import { aggregateSales, getMonthData, getSalesInRange, getSettings } from '@/lib/repo';
+import { PRODUCTS, PRODUCT_LABELS, type DayEntry, type Product } from '@/lib/types';
+import { isDayEmpty, pct } from '@/lib/calc';
 import {
   MONTHS_SHORT,
   monthLabel,
   fmtNumber,
+  fmtEur,
   fmtPercent,
+  monthEndISO,
+  monthStartISO,
   todayISO,
 } from '@/lib/format';
 
@@ -44,10 +48,12 @@ export default async function MoisPage({ params }: { params: Promise<Params> }) 
   if (!period) notFound();
 
   const { year, month } = period;
-  const [data, settings] = await Promise.all([
+  const [data, settings, sales] = await Promise.all([
     getMonthData(year, month),
     getSettings(),
+    getSalesInRange(monthStartISO(year, month), monthEndISO(year, month)),
   ]);
+  const salesTotals = aggregateSales(sales);
   const today = todayISO();
   const t = data.totals;
   const key = `${year}-${String(month).padStart(2, '0')}`;
@@ -181,6 +187,40 @@ export default async function MoisPage({ params }: { params: Promise<Params> }) 
               }))}
             />
           </SectionCard>
+
+          <SectionCard
+            title="Recettes du mois"
+            subtitle="Ventes encaissées (espèces & carte)"
+            actions={
+              <Link
+                href={`/ventes/${key}`}
+                className="text-[11.5px] font-semibold text-brand hover:underline"
+              >
+                Voir les ventes →
+              </Link>
+            }
+          >
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-xl bg-olive-soft/70 px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                  Espèces
+                </div>
+                <div className="num text-lg font-bold text-olive">{fmtEur(salesTotals.especes)}</div>
+              </div>
+              <div className="rounded-xl bg-brand-soft px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                  Carte
+                </div>
+                <div className="num text-lg font-bold text-brand-dark">{fmtEur(salesTotals.carte)}</div>
+              </div>
+              <div className="rounded-xl bg-cream/70 px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">
+                  CA total
+                </div>
+                <div className="num text-lg font-bold text-ink">{fmtEur(salesTotals.total)}</div>
+              </div>
+            </div>
+          </SectionCard>
         </div>
       </div>
 
@@ -274,6 +314,18 @@ export default async function MoisPage({ params }: { params: Promise<Params> }) 
             </tfoot>
           </table>
         </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Historique des saisies"
+        subtitle="Corrigez ou supprimez une journée : les récapitulatifs se recalculent automatiquement"
+        bodyClassName=""
+      >
+        <HistoryList
+          entries={data.days
+            .filter((d) => d.entry && !isDayEmpty(d.entry))
+            .map((d) => d.entry as DayEntry)}
+        />
       </SectionCard>
 
       <p className="px-1 text-[10.5px] text-ink-soft/80">
