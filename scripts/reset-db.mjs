@@ -34,9 +34,13 @@ if (remote) {
   const db = createClient({ url: remoteUrl, authToken: process.env.TURSO_AUTH_TOKEN || undefined });
   try {
     await db.execute('DELETE FROM jours');
+    await db.execute('DELETE FROM ventes');
     await db.execute('DELETE FROM reglages');
-    console.log(`Base distante vidée : ${remoteUrl}`);
-    console.log('Au prochain démarrage : réglages recréés (stock de départ à 0).\n');
+    console.log(`Base distante vidée (jours, ventes, réglages) : ${remoteUrl}`);
+    console.log('Au prochain démarrage : réglages recréés (stock de départ à 0).');
+    console.log(
+      '⚠ Si DEMO_DATA n’est pas à 0 côté hébergeur, un jeu de démonstration sera recréé.\n',
+    );
   } finally {
     db.close();
   }
