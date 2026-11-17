@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { NumberField } from '@/components/day/NumberField';
@@ -25,6 +25,13 @@ export function SaleForm({ defaultDate, initial, onDone, onCancel }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Le message de confirmation disparaît seul après ~2,6 s (comme le formulaire du jour).
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2600);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
