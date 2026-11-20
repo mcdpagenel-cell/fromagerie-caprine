@@ -8,6 +8,9 @@ autoconsommation, pertes, stocks et exports `.xlsx` prêts à archiver.
 - **En ligne** : base **Turso** persistante (libSQL) + **mot de passe** partagé.
   Voir [DEPLOIEMENT.md](./DEPLOIEMENT.md).
 
+> Vue d'ensemble du projet (fonctionnalités, architecture, exploitation) :
+> [RESUME-PROJET.md](./RESUME-PROJET.md).
+
 ## Démarrage rapide (local)
 
 Prérequis : **Node.js 24 ou supérieur**.
